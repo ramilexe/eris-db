@@ -39,10 +39,14 @@ import (
 	config "github.com/eris-ltd/eris-db/config"
 	manager_types "github.com/eris-ltd/eris-db/manager/types"
 	// files  "github.com/eris-ltd/eris-db/files"
+	"encoding/json"
 	blockchain_types "github.com/eris-ltd/eris-db/blockchain/types"
 	consensus_types "github.com/eris-ltd/eris-db/consensus/types"
 	"github.com/eris-ltd/eris-db/txs"
 	"github.com/tendermint/go-wire"
+	"io/ioutil"
+	"net/http"
+	"time"
 )
 
 type Tendermint struct {
@@ -98,6 +102,7 @@ func NewTendermint(moduleConfig *config.ModuleConfig,
 		"nodeLocalAddress":     tmintConfig.GetString("node_laddr"),
 		"moniker":              tmintConfig.GetString("moniker"),
 		"seeds":                tmintConfig.GetString("seeds"),
+		"gatewayEndpoint":      tmintConfig.GetString("gateway_endpoint"),
 		"fastSync":             tmintConfig.GetBool("fast_sync"),
 		"rpcLocalAddress":      tmintConfig.GetString("rpc_laddr"),
 		"databaseDirectory":    tmintConfig.GetString("db_dir"),
@@ -125,6 +130,53 @@ func NewTendermint(moduleConfig *config.ModuleConfig,
 		hash []byte) proxy.AppConn {
 		return NewLocalClient(new(sync.Mutex), application)
 	})
+
+	//API for public key verification
+	gatewayEndpoint := tmintConfig.GetString("gateway_endpoint")
+	if gatewayEndpoint != "" {
+		newNode.Switch().SetPubKeyFilter(func(pubkey crypto.PubKeyEd25519) error {
+
+			params := "value=" + pubkey.KeyString()
+			req, err := http.NewRequest("POST", gatewayEndpoint, strings.NewReader(params))
+			if err != nil {
+				return fmt.Errorf("Error creating request: %v", err)
+			}
+
+			client := &http.Client{
+				Timeout: time.Second * 10,
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				return fmt.Errorf("Error calling validation service: %v", err)
+			}
+
+			if resp.StatusCode != 200 {
+				return fmt.Errorf("Error calling validation service. Status: %d", resp.StatusCode)
+			}
+
+			type ValidationResponse struct {
+				Value bool
+			}
+
+			body, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("Error validation service. Could not read. %v", err)
+			}
+
+			validation := &ValidationResponse{}
+			if err := json.Unmarshal(body, validation); err != nil {
+				return fmt.Errorf("Error validation service. Unmarshaling. %v", err)
+
+			}
+
+			//validation service returned false
+			if !validation.Value {
+				return fmt.Errorf("Public key validation error. Declined")
+			}
+
+			return nil
+		})
+	}
 
 	listener := p2p.NewDefaultListener("tcp", tmintConfig.GetString("node_laddr"),
 		tmintConfig.GetBool("skip_upnp"))

@@ -65,6 +65,7 @@ func (tmintConfig *TendermintConfig) AssertTendermintDefaults(chainId, workDir,
 	tmintConfig.SetDefault("moniker", "anonymous_marmot")
 	tmintConfig.SetDefault("node_laddr", "0.0.0.0:46656")
 	tmintConfig.SetDefault("seeds", "")
+	tmintConfig.SetDefault("gateway_endpoint", "")
 
 	tmintConfig.SetDefault("fast_sync", true)
 	tmintConfig.SetDefault("skip_upnp", false)
