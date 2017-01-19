@@ -1,3 +1,5 @@
+// +build arm 386
+
 package architecture
 
 import "math"
